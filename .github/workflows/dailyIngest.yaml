@@ -1,0 +1,62 @@
+# .github/workflows/nse_daily_ingest.yml
+#
+# Runs the NSE incremental ingest every weekday at 6:00pm IST (12:30 UTC).
+# NSE market closes at 3:30pm IST — this gives a 2.5hr buffer for
+# yfinance to have clean end-of-day data.
+#
+# Setup:
+#   1. Push this repo to GitHub
+#   2. Go to Settings → Secrets and variables → Actions
+#   3. Add these repository secrets:
+#        SNOWFLAKE_ACCOUNT   abc12345.ap-south-1
+#        SNOWFLAKE_USER      your_username
+#        SNOWFLAKE_PASSWORD  your_password
+#
+# Manual trigger: Actions tab → "NSE daily ingest" → Run workflow
+
+name: NSE daily ingest
+
+on:
+  schedule:
+    - cron: "30 12 * * 1-5"   # 12:30 UTC = 6:00pm IST, Monday–Friday
+  workflow_dispatch:            # allow manual trigger from GitHub UI
+
+jobs:
+  ingest:
+    name: Fetch and load NSE data
+    runs-on: ubuntu-latest
+    timeout-minutes: 30         # fail loudly if something hangs
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install \
+            snowflake-snowpark-python \
+            yfinance \
+            pandas \
+            python-dotenv
+
+      - name: Run incremental ingest
+        env:
+          SNOWFLAKE_ACCOUNT:   ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER:      ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD:  ${{ secrets.SNOWFLAKE_PASSWORD }}
+          SNOWFLAKE_ROLE:      ACCOUNTADMIN
+          SNOWFLAKE_WAREHOUSE: COMPUTE_WH
+          SNOWFLAKE_DATABASE:  NSE_DATABASE
+        run: python dailyIngest.py
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "::error::NSE ingest failed on $(date). Check logs above."
