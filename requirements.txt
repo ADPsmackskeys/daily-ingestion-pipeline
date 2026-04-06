@@ -1,4 +1,4 @@
+pandas
 snowflake-snowpark-python
 yfinance
-pandas
 python-dotenv
